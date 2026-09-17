@@ -16,6 +16,25 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://fullomyself.github.io',
+  'https://fullomyself.github.io/multiservice_frontend'
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+  })
+);
 
 const seedUsers = [
   {
@@ -63,7 +82,6 @@ const seedServices = [
 ];
 
 app.use(helmet());
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
