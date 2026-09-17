@@ -79,9 +79,18 @@ async function seedInitialData() {
     return;
   }
 
-  const adminPassword = await bcrypt.hash('admin123', 10);
-  const providerPassword = await bcrypt.hash('provider123', 10);
-  const customerPassword = await bcrypt.hash('customer123', 10);
+  const adminPasswordValue = process.env.SEED_ADMIN_PASSWORD;
+  const providerPasswordValue = process.env.SEED_PROVIDER_PASSWORD;
+  const customerPasswordValue = process.env.SEED_CUSTOMER_PASSWORD;
+
+  if (!adminPasswordValue || !providerPasswordValue || !customerPasswordValue) {
+    console.warn('Seed users skipped: set SEED_ADMIN_PASSWORD, SEED_PROVIDER_PASSWORD, and SEED_CUSTOMER_PASSWORD in your .env file.');
+    return;
+  }
+
+  const adminPassword = await bcrypt.hash(adminPasswordValue, 10);
+  const providerPassword = await bcrypt.hash(providerPasswordValue, 10);
+  const customerPassword = await bcrypt.hash(customerPasswordValue, 10);
 
   const admin = await User.create({
     name: 'Platform Admin',
