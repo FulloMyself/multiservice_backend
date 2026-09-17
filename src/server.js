@@ -17,6 +17,51 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
 
+const seedUsers = [
+  {
+    name: 'Platform Admin',
+    email: 'admin@multiservice.local',
+    role: 'admin',
+    passwordEnv: 'SEED_ADMIN_PASSWORD'
+  },
+  {
+    name: 'Sarah Plumber',
+    email: 'provider@multiservice.local',
+    role: 'provider',
+    passwordEnv: 'SEED_PROVIDER_PASSWORD'
+  },
+  {
+    name: 'Customer Example',
+    email: 'customer@multiservice.local',
+    role: 'customer',
+    passwordEnv: 'SEED_CUSTOMER_PASSWORD'
+  }
+];
+
+const seedServices = [
+  {
+    name: 'Home Cleaning',
+    category: 'Home Services',
+    description: 'Routine home cleaning for homes and apartments.',
+    price: 450,
+    durationMinutes: 120
+  },
+  {
+    name: 'AC Repair',
+    category: 'Repairs',
+    description: 'Fast inspection and repair for residential air conditioning units.',
+    price: 850,
+    durationMinutes: 180
+  },
+  {
+    name: 'Digital Marketing Setup',
+    category: 'Business',
+    description: 'Setup and optimization for online brand presence and local campaigns.',
+    price: 1200,
+    durationMinutes: 240
+  }
+];
+
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
@@ -79,97 +124,72 @@ async function seedInitialData() {
     return;
   }
 
-  const adminPasswordValue = process.env.SEED_ADMIN_PASSWORD;
-  const providerPasswordValue = process.env.SEED_PROVIDER_PASSWORD;
-  const customerPasswordValue = process.env.SEED_CUSTOMER_PASSWORD;
+  const missingSeeds = seedUsers
+    .map((seed) => ({ ...seed, value: process.env[seed.passwordEnv] }))
+    .filter((seed) => !seed.value);
 
-  if (!adminPasswordValue || !providerPasswordValue || !customerPasswordValue) {
-    console.warn('Seed users skipped: set SEED_ADMIN_PASSWORD, SEED_PROVIDER_PASSWORD, and SEED_CUSTOMER_PASSWORD in your .env file.');
+  if (missingSeeds.length > 0) {
+    const missingList = missingSeeds.map((seed) => seed.passwordEnv).join(', ');
+    console.warn(`Seed users skipped: set ${missingList} in your .env file.`);
     return;
   }
 
-  const adminPassword = await bcrypt.hash(adminPasswordValue, 10);
-  const providerPassword = await bcrypt.hash(providerPasswordValue, 10);
-  const customerPassword = await bcrypt.hash(customerPasswordValue, 10);
+  const createdUsers = await Promise.all(
+    seedUsers.map(async (seed) => {
+      const password = await bcrypt.hash(process.env[seed.passwordEnv], 10);
+      return User.create({
+        name: seed.name,
+        email: seed.email,
+        password,
+        role: seed.role
+      });
+    })
+  );
 
-  const admin = await User.create({
-    name: 'Platform Admin',
-    email: 'admin@multiservice.local',
-    password: adminPassword,
-    role: 'admin'
-  });
-
-  const provider = await User.create({
-    name: 'Sarah Plumber',
-    email: 'provider@multiservice.local',
-    password: providerPassword,
-    role: 'provider'
-  });
-
-  const customer = await User.create({
-    name: 'Customer Example',
-    email: 'customer@multiservice.local',
-    password: customerPassword,
-    role: 'customer'
-  });
-
-  await Service.create([
-    {
-      name: 'Home Cleaning',
-      category: 'Home Services',
-      description: 'Routine home cleaning for homes and apartments.',
-      price: 450,
-      durationMinutes: 120,
-      provider: provider._id,
-      providerName: provider.name,
-      status: 'active'
-    },
-    {
-      name: 'AC Repair',
-      category: 'Repairs',
-      description: 'Fast inspection and repair for residential air conditioning units.',
-      price: 850,
-      durationMinutes: 180,
-      provider: provider._id,
-      providerName: provider.name,
-      status: 'active'
-    },
-    {
-      name: 'Digital Marketing Setup',
-      category: 'Business',
-      description: 'Setup and optimization for online brand presence and local campaigns.',
-      price: 1200,
-      durationMinutes: 240,
-      provider: provider._id,
-      providerName: provider.name,
-      status: 'active'
-    }
-  ]);
-
-  console.log('Seeded default admin, provider, customer and service data.');
-  return { admin, provider, customer };
-}
-
-async function startServer() {
-  const dbConnected = await connectDB();
-
-  if (dbConnected) {
-    await seedInitialData();
+  const provider = createdUsers.find((user) => user.role === 'provider');
+  if (!provider) {
+    console.warn('No provider seed user was created.');
+    return;
   }
 
-  const server = app.listen(PORT, () => {
-    console.log(`Server listening on http://localhost:${PORT}`);
-  });
+  await Service.create(
+    seedServices.map((service) => ({
+      ...service,
+      provider: provider._id,
+      providerName: provider.name,
+      status: 'active'
+    }))
+  );
 
-  server.on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-      console.error(`Port ${PORT} is already in use. Stop the other process or change PORT in the environment.`);
+  console.log('Seeded default admin, provider, customer and service data.');
+  return createdUsers;
+}
+
+function startServer() {
+  connectDB()
+    .then(async (dbConnected) => {
+      if (dbConnected) {
+        await seedInitialData();
+      }
+
+      const server = app.listen(PORT, () => {
+        console.log(`Server listening on http://localhost:${PORT}`);
+      });
+
+      server.on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+          console.error(`Port ${PORT} is already in use. Stop the other process or change PORT in the environment.`);
+          process.exit(1);
+        }
+
+        console.error('Server failed to start:', error);
+        process.exit(1);
+      });
+    })
+    .catch((error) => {
+      console.error('Database connection failed:', error);
       process.exit(1);
-    }
-
-    console.error('Server failed to start:', error);
-    process.exit(1);
-  });
+    });
 }
 
 startServer();
